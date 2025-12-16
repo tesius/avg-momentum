@@ -1,0 +1,12 @@
+[project]
+name = "momentum-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "pandas>=2.3.3",
+    "streamlit>=1.52.1",
+    "yfinance>=0.2.66",
+]
