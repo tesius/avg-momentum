@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
+import re
 
 # --- 페이지 설정 ---
 st.set_page_config(
@@ -29,36 +30,60 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- 함수: 한국 주식 코드 처리 ---
+def get_stock_data(ticker):
+    """
+    입력된 티커가 6자리 숫자(한국 주식)인 경우 .KS(코스피), .KQ(코스닥) 순서로 탐색
+    그 외에는 그대로 검색
+    """
+    ticker = ticker.strip().upper()
+    
+    # 한국 주식 코드 패턴 (숫자 6자리) 확인
+    if re.fullmatch(r'\d{6}', ticker):
+        # 1. 코스피(.KS) 먼저 시도
+        try_ticker = f"{ticker}.KS"
+        df = yf.download(try_ticker, period="2y", progress=False)
+        if not df.empty:
+            return df, try_ticker
+            
+        # 2. 데이터 없으면 코스닥(.KQ) 시도
+        try_ticker = f"{ticker}.KQ"
+        df = yf.download(try_ticker, period="2y", progress=False)
+        if not df.empty:
+            return df, try_ticker
+            
+        return pd.DataFrame(), ticker # 둘 다 없으면 빈 데이터 반환
+    else:
+        # 미국 주식 등 일반 티커
+        df = yf.download(ticker, period="2y", progress=False)
+        return df, ticker
+
 # --- 타이틀 ---
-st.title("Momentum Check")
+st.title("Momentum Check (KR/US)")
 
 # --- 레이아웃 ---
 col_left, col_center, col_right = st.columns([1, 1.5, 1])
 
 with col_center:
-    # [핵심 변경 1] st.form으로 감싸기 (border=False로 투명하게)
     with st.form(key="search_form", border=False):
-        
-        # 컬럼 배치는 폼 안에서 수행
         c_input, c_btn = st.columns([3, 1], gap="small", vertical_alignment="bottom")
         
         with c_input:
-            ticker_input = st.text_input("Ticker", value="SPY", label_visibility="collapsed").upper()
+            # 힌트 텍스트 추가
+            ticker_input = st.text_input("Ticker / Code", value="005930", placeholder="예: SPY 또는 005930", label_visibility="collapsed")
         
         with c_btn:
-            # [핵심 변경 2] 일반 button 대신 form_submit_button 사용
-            # 이제 엔터를 치거나 이 버튼을 누르면 submitted가 True가 됩니다.
             submitted = st.form_submit_button("GO", type="primary", use_container_width=True)
 
 # --- 로직 ---
-# submitted 변수가 True일 때 (엔터 or 클릭) 실행
 if submitted and ticker_input:
     try:
         with st.spinner(f"Searching {ticker_input}..."):
-            df = yf.download(ticker_input.strip(), period="2y", progress=False)
+            # 수정된 함수 사용하여 데이터 가져오기
+            df, found_ticker = get_stock_data(ticker_input)
             
             if df.empty:
-                st.error("데이터를 찾을 수 없습니다.")
+                st.error(f"'{ticker_input}'에 대한 데이터를 찾을 수 없습니다. (상장 폐지 혹은 코드 오류)")
             else:
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
@@ -83,7 +108,8 @@ if submitted and ticker_input:
 
                     # --- 결과 출력 ---
                     st.divider()
-                    st.markdown(f"<h3 style='text-align: center;'>{ticker_input} Analysis Result</h3>", unsafe_allow_html=True)
+                    # 찾은 실제 티커명(예: 005930.KS)을 보여줌
+                    st.markdown(f"<h3 style='text-align: center;'>{found_ticker} Analysis Result</h3>", unsafe_allow_html=True)
                     st.write("")
 
                     m_left, m_center, m_right = st.columns([1, 1, 1])
@@ -101,7 +127,7 @@ if submitted and ticker_input:
                     # --- Altair 차트 ---
                     st.write("")
                     st.write("")
-                    st.caption(f"📉 {ticker_input} 1 Year Trend")
+                    st.caption(f"📉 {found_ticker} 1 Year Trend")
                     
                     chart_df = df[[price_col]].tail(252).reset_index()
                     chart_df.columns = ['Date', 'Price']
